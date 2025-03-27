@@ -13,7 +13,7 @@ To start, we should upload an avatar image, construct a prompt, and see if we ca
 The prompt that I ended up going with was this:
 "A moving avatar that looks around subtly, blinks, looks forward, and seems to be looking at the camera, seemless loop, centered with space on either side"
 
-The seamless loop didn't quite work out and because of the dimensions Runway supports, we had to crop the avatar. Alternately you could use something like photoshop to generatively expand the image to 1280x768 from it's original square dimensions but the current result is still pretty cool.
+The seamless loop didn't quite work out and because of the dimensions Runway supports, we had to crop the avatar. Alternately you could use something like Photoshop to generatively expand the image to 1280x768 from it's original square dimensions but the current result is still pretty cool.
 
 ![rendered video of an avatar](./images/smoking-man.gif)
 
@@ -44,26 +44,18 @@ npx nuxi init avatar-app
 cd avatar-app
 ```
 
-Then I'll install the VueUse module as it will come in handy later.
-
-```bash
-npx nuxi module add @vueuse/nuxt
-```
-
-Let's also install some other packages for later use.
+Then I'll install the Runway SDK.
 
 ```bash
 npm install @vueuse/components @runwayml/sdk
 ```
 
-Finally, let's add the Runway API key to the `.env` file...
+Finally, let's add the Runway API key to the `.env` file and declare a runtime config variable for it in `nuxt.config.ts`.
 
 ```bash
 # .env
 NUXT_RUNWAY_API_KEY=your-api-key-here
 ```
-
-... and declare a runtime config variable for it in `nuxt.config.ts`.
 
 ```ts
 // nuxt.config.ts
@@ -76,7 +68,7 @@ export default defineNuxtConfig({
 
 ### Create a Form for Uploading an Avatar Image
 
-Start up the dev server (`npm run dev`) and navigate to `http://localhost:3000`. You should see the Nuxt welcome screen.
+Start up the dev server with `npm run dev` and navigate to `http://localhost:3000`. You should see the Nuxt welcome screen.
 
 ![Nuxt welcome screen](./images/nuxt-welcome-screen.jpg)
 
@@ -170,7 +162,7 @@ const body = await readBody(event);
 const imageUrl = body?.url;
 ```
 
-I called it url because it could be a valid URL or a base64 encoded string. If the url isn't provided we should throw an error.
+I called it `url` because it could be a valid publicly accessible URL or a base64 encoded string. If the url isn't provided we should throw an error.
 
 ```ts
 if (!imageUrl) {
@@ -181,9 +173,9 @@ if (!imageUrl) {
 }
 ```
 
-Next we can pass the image along to Runway.
+Next, we can pass the image along to Runway.
 
-First, let's create a helper function to always get the Runway client with the correct API key. We can create auto-imported helpers for API endpoints in the `server/utils` directory.
+Let's create a helper function to always get the Runway client with the correct API key. We can create auto-imported helpers for API endpoints in the `server/utils` directory.
 
 ```ts
 // server/utils/index.ts
@@ -195,7 +187,7 @@ export function useRunway() {
 }
 ```
 
-We'll then use the `useRunway` helper to make the call and use the same prompt we used in the web app.
+We'll then call the `useRunway` helper using the same prompt we used in the web app.
 
 ```ts
 const runway = useRunway();
@@ -220,10 +212,15 @@ return task;
 BEFORE we return the task though, let's use the `event.waitUntil` method to run a function that polls the runway api for the task status until it's complete. `event.waitUntil` means we can return the response immediately (the pending task) but the server will keep running the `waitUntil` function in the background.
 
 ```ts
+const task = await runway.tasks.retrieve(imageToVideo.id);
+
+// call waitUntil BEFORE returning the task
 event.waitUntil((async () => {})());
+
+return task;
 ```
 
-Inside this function we'll use the `runway` package to check the status of the video generation task every second until it's either succeeded or failed.
+Inside this function we'll use the `runway` package to check the status of the video generation every second until it's either succeeded or failed.
 
 ```ts
 event.waitUntil(
@@ -249,38 +246,55 @@ export function sleep(ms: number) {
 As we're polling for the task status inside the do...while loop, we'll want to save the result to storage so we can:
 
 1.  pass on that data to the client once the task is complete.
-2.  have a persisten record of the video url
+2.  have a persistent record of the video url
 
-Nuxt's useStorage function is perfect for storing key value pairs. In development we can use the `data` storage bucket to store directly in the file system. In production, you could configure your own storage bucket like AWS S3 or Cloudflare R2.
+Nuxt's useStorage function is perfect for storing key value pairs. In development we can use the `data` storage bucket to store data directly in the file system. In production, you could configure your own storage bucket like AWS S3 or Cloudflare R2. Or you could use a database like SQLite or Postgres. Since KV storage is built into Nuxt, it's a great choice for this project.
 
-We'll store all generated avatars in an array under the same `avatars` key.
+We'll store the generated avatars using the id as the key.
 
 ```ts
 const storage = useStorage("data");
-// get existing avatars first (or default to an empty array if none)
-const existingAvatars =
-  (await storage.getItem<(typeof task)[]>("avatars")) || [];
-
-// find the index of the task in the existing avatars array
-// if it's not found, add it to the end of the array
-const index = existingAvatars.findIndex((a) => a.id === imageToVideo.id);
-existingAvatars[index === -1 ? existingAvatars.length : index] = task;
-
-// save the updated array back to storage
-storage.setItem("avatars", existingAvatars);
+storage.setItem(imageToVideo.id, task);
 ```
 
 ### Display the Avatar Video(s)
 
-On the client side, let's display the generated avatar video(s) in a list. First, we'll create another API endpoint to retrieve the avatars from storage. This ones really simple.
+Now that we've saved the task to storage, we can display the avatar video(s) on the page.
+
+```html
+<script setup lang="ts">
+  const { data: avatars } = await useFetch("/api/movingAvatar");
+</script>
+```
+
+On the client side, let's display the generated avatar video(s) in a list. First, we'll create another API endpoint to retrieve the avatars from storage and order them by the date they were created.
 
 ```ts
-// server/api/movingAvatar/list.ts
+// server/api/movingAvatar/index.ts
 import type { generatedAvatar } from "~/types";
 
 export default defineEventHandler(async (event) => {
   const storage = useStorage("data");
-  return (await storage.getItem<generatedAvatar[]>("avatars")) || [];
+
+  // get all the keys in the storage bucket
+  const allKeys = await storage.getKeys();
+
+  // get all the items in the storage bucket
+  // in parallel based on the keys
+  const allItems = await Promise.all(
+    allKeys.map(async (key) => {
+      return await storage.getItem<generatedAvatar>(key);
+    })
+  );
+
+  // filter out any null items
+  // and sort by the createdAt date
+  return allItems
+    .filter((item) => item !== null)
+    .toSorted(
+      (a, b) =>
+        new Date(a!.createdAt).getTime() - new Date(b!.createdAt).getTime()
+    ) as generatedAvatar[];
 });
 ```
 
@@ -288,7 +302,7 @@ Now we can use this endpoint to display the avatar videos on the page.
 
 ```html
 <script setup lang="ts">
-  const { data: avatars } = useFetch("/api/movingAvatar");
+  const { data: avatars } = await useFetch("/api/movingAvatar");
 </script>
 
 <template>
@@ -298,6 +312,12 @@ Now we can use this endpoint to display the avatar videos on the page.
         <video
           :src="avatar.output.at(0)"
           v-if="avatar.status === 'SUCCEEDED'"
+          width="150"
+          height="150"
+          style="object-fit: cover"
+          muted
+          autoplay
+          loop
         />
         <div v-else-if="avatar.status === 'FAILED'">
           Failed to generate video
@@ -305,8 +325,8 @@ Now we can use this endpoint to display the avatar videos on the page.
         <div v-else>Pending...</div>
       </li>
     </ul>
-  </div></template
->
+  </div>
+</template>
 ```
 
 ### Listen for Task Completion
@@ -342,3 +362,19 @@ watch(
 );
 </script>
 ```
+
+### Conclusion
+
+If you followed along with the steps above, you've complete the most important parts of building this app. Along the way we learned how to:
+
+- [Upload an image as a base64 encoded string to the Runway API](https://docs.dev.runwayml.com/guides/quickstart/#uploading-base64-encoded-images-as-data-uris)
+- Use the Runway API to generate videos from images
+- [Create custom Nuxt API endpoints](https://vueschool.io/lessons/nuxt-server-api-routes)
+- Store and retrieve data from Nuxt's KV storage
+- Use the [`event.waitUntil` method to run a function in the background](https://nuxt.com/docs/guide/directory-structure/server#awaiting-promises-after-response)
+- Poll our own API endpoint for task status updates
+- Display the avatar video(s) on the page
+
+All that's left to do now is style it to your liking! You could also add a preview of the avatar image before it's video is generated. You can see both of these added features in the [final code on GitHub](https://github.com/nuxt/blog/tree/main/content/article/building-an-avatar-video-generator-with-nuxt-js-and-runway).
+
+I hope you enjoyed this article and learned something new! If you want to learn more about handling file uploads in Nuxt and Vue then checkout our complete course on [File Uploads in Vue.js](https://vueschool.io/courses/file-uploads-in-vue-js).
