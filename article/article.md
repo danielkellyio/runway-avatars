@@ -158,6 +158,7 @@ The file structure determins the API route so the file above will run at `/api/m
 Next we'll need to get the base64 encoded image from the request body. We sent it via a field called `url` so we can access it like this:
 
 ```ts
+// server/api/movingAvatar/generate.ts
 const body = await readBody(event);
 const imageUrl = body?.url;
 ```
@@ -165,6 +166,7 @@ const imageUrl = body?.url;
 I called it `url` because it could be a valid publicly accessible URL or a base64 encoded string. If the url isn't provided we should throw an error.
 
 ```ts
+// server/api/movingAvatar/generate.ts
 if (!imageUrl) {
   throw createError({
     statusCode: 400,
@@ -204,6 +206,7 @@ const imageToVideo = (await runway.imageToVideo.create({
 This kicks off a long running task. Let's get details about the task from the Runway API and return that to the browser.
 
 ```ts
+// server/api/movingAvatar/generate.ts
 const task = await runway.tasks.retrieve(imageToVideo.id);
 
 return task;
@@ -212,6 +215,7 @@ return task;
 BEFORE we return the task though, let's use the `event.waitUntil` method to run a function that polls the runway api for the task status until it's complete. `event.waitUntil` means we can return the response immediately (the pending task) but the server will keep running the `waitUntil` function in the background.
 
 ```ts
+// server/api/movingAvatar/generate.ts
 const task = await runway.tasks.retrieve(imageToVideo.id);
 
 // call waitUntil BEFORE returning the task
@@ -253,6 +257,7 @@ Nuxt's useStorage function is perfect for storing key value pairs. In developmen
 We'll store the generated avatars using the id as the key.
 
 ```ts
+// server/api/movingAvatar/generate.ts
 const storage = useStorage("data");
 storage.setItem(imageToVideo.id, task);
 ```
@@ -262,6 +267,7 @@ storage.setItem(imageToVideo.id, task);
 Now that we've saved the task to storage, we can display the avatar video(s) on the page.
 
 ```html
+<!-- app.vue -->
 <script setup lang="ts">
   const { data: avatars } = await useFetch("/api/movingAvatar");
 </script>
@@ -377,4 +383,4 @@ If you followed along with the steps above, you've complete the most important p
 
 All that's left to do now is style it to your liking! You could also add a preview of the avatar image before it's video is generated. You can see both of these added features in the [final code on GitHub](https://github.com/danielkellyio/runway-avatars).
 
-I hope you enjoyed this article and learned something new! If you want to learn more about handling file uploads in Nuxt and Vue then checkout our complete course on [File Uploads in Vue.js](https://vueschool.io/courses/file-uploads-in-vue-js).
+Runway is a powerful tool for generating videos from images. When paired with Nuxt's server endpoints and storage, it's a great way to add some magic to your app. I hope you enjoyed this article and learned something new! If you want to learn more about handling file uploads in Nuxt and Vue then checkout our complete course on [File Uploads in Vue.js](https://vueschool.io/courses/file-uploads-in-vue-js).
