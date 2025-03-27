@@ -8,7 +8,9 @@ const files = ref<
   }[]
 >([]);
 
-const { data: avatars, execute: fetchAvatars } = useFetch("/api/movingAvatar");
+const { data: avatars, execute: fetchAvatars } = await useFetch(
+  "/api/movingAvatar"
+);
 
 const showImmediate = ref<File | undefined>();
 const { base64: previewImmediate } = useBase64(showImmediate);
@@ -40,15 +42,18 @@ async function handleFileUpload(e: Event) {
 }
 
 let interval: ReturnType<typeof setInterval> | undefined;
+
+const hasPending = computed(() => {
+  return !!avatars.value?.find(
+    (avatar) => ["PENDING", "RUNNING"].includes(avatar.status) || !avatar.status
+  );
+});
+
 watch(
   avatars,
   () => {
     clearInterval(interval);
-    const pending = avatars.value?.find(
-      (avatar) =>
-        ["PENDING", "RUNNING"].includes(avatar.status) || !avatar.status
-    );
-    if (pending) {
+    if (hasPending.value) {
       interval = setInterval(fetchAvatars, 1000);
     }
   },
@@ -63,6 +68,7 @@ watch(
     <h1>Moving Pravatar Experiement</h1>
     <div class="controls">
       <input
+        :disabled="hasPending"
         type="file"
         accept="image/png, image/jpeg"
         @change="handleFileUpload"
@@ -78,7 +84,7 @@ watch(
               v-if="isVisible"
               :src="avatar.output?.at(0)"
               width="150"
-              autoplay
+              :autoplay="isVisible"
               loop
               muted
               class="video"
