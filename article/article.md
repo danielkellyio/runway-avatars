@@ -375,6 +375,6 @@ If you followed along with the steps above, you've complete the most important p
 - Poll our own API endpoint for task status updates
 - Display the avatar video(s) on the page
 
-All that's left to do now is style it to your liking! You could also add a preview of the avatar image before it's video is generated. You can see both of these added features in the [final code on GitHub](https://github.com/nuxt/blog/tree/main/content/article/building-an-avatar-video-generator-with-nuxt-js-and-runway).
+All that's left to do now is style it to your liking! You could also add a preview of the avatar image before it's video is generated. You can see both of these added features in the [final code on GitHub](https://github.com/danielkellyio/runway-avatars).
 
 I hope you enjoyed this article and learned something new! If you want to learn more about handling file uploads in Nuxt and Vue then checkout our complete course on [File Uploads in Vue.js](https://vueschool.io/courses/file-uploads-in-vue-js).
