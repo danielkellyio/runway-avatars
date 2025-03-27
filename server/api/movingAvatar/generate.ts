@@ -1,7 +1,7 @@
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event);
-    const imageUrl = body?.url; // https://pbs.twimg.com/profile_images/1543113237415215104/6MUa5Tta_400x400.jpg
+    const imageUrl = body?.url;
     const prompt =
       "A moving avatar that looks around subtly, blinks, looks forward, and seems to be looking at the camera, seemless loop, centered with space on either side";
 
@@ -38,10 +38,6 @@ export default defineEventHandler(async (event) => {
 
   async function saveTaskToStorage<T extends { id: string }>(task: T) {
     const storage = useStorage("data");
-    const existingAvatars =
-      (await storage.getItem<(typeof task)[]>("avatars")) || [];
-    const index = existingAvatars.findIndex((a) => a.id === task.id);
-    existingAvatars[index === -1 ? existingAvatars.length : index] = task;
-    await storage.setItem("avatars", existingAvatars);
+    await storage.setItem(task.id, task);
   }
 });
